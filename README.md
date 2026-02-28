@@ -18,13 +18,13 @@
 
 | Before (2 separate tools) | After (AIO) |
 |---|---|
-| 1. Run **Cube Data Generator** → creates Excel files | 1. Select grades + office template |
+| 1. Run **Cube Data Generator** → creates Excel files | 1. Select office template (+ calendar if needed) |
 | 2. Open **Cube Data Processor** → load those Excel files | 2. Click **Start** → done ✅ |
 | 3. Configure, process, save | No intermediate files needed |
 
 ### Features
 
-- **Auto-Generate** concrete (M10–M45) and mortar (1:4, 1:6) test data in-memory
+- **Auto-Detect + Generate** from office template grades/types in cell **B12**
 - **Auto-Process** — generated data is written directly into office template sheets
 - **Calendar Date Processing** — 7-day / 28-day test dates from calendar file
 - **Modern Dark UI** built with CustomTkinter
@@ -38,8 +38,8 @@
 
 | Mode | Description |
 |---|---|
-| ⚡ **Auto Generate + Date** | Generate data + apply calendar dates (recommended) |
-| 🔄 **Auto Generate Only** | Generate and apply grade data, skip dates |
+| ⚡ **Auto Detect + Generate + Date** | Detect each sheet grade/type from B12, generate data, and apply calendar dates (recommended) |
+| 🔄 **Auto Detect + Generate** | Detect each sheet grade/type from B12, generate and apply data, skip dates |
 | 📅 **Date Only** | Only apply calendar dates to existing sheets |
 | 📁 **Files + Date (Legacy)** | Use existing grade Excel files + dates |
 | 📁 **Files Only (Legacy)** | Use existing grade Excel files only |
@@ -90,15 +90,15 @@ Go to [Releases](https://github.com/Sandeep2062/Cube-Data-Changer-AIO/releases) 
 
 ## How It Works
 
-1. **Select grades** (M10–M45, Mortar 1:4/1:6) in the sidebar
-2. **Browse** your office template Excel file
-3. **Browse** calendar file (optional, for date processing)
-4. **Select** output folder
+1. **Browse** your office template Excel file
+2. **Browse** calendar file (optional, for date processing)
+3. **Select** output folder
+4. Choose processing mode
 5. Click **▶ START PROCESSING**
 
 The app will:
-- Generate random but realistic weight and strength values for each selected grade
-- Match sheets in your office template by checking cell **B12** for the grade name
+- Detect grade/type from each sheet cell **B12** (M10–M45, Mortar 1:4, Mortar 1:6)
+- Generate random but realistic weight and strength values per sheet
 - Write weights to **row 25, columns C–H**
 - Write 7-day + 28-day strengths to **row 27, columns C–H**
 - Optionally write test dates from the calendar file

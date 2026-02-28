@@ -20,7 +20,6 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
 import settings as app_settings
-from generator import CONCRETE_GRADES, MORTAR_TYPES, ALL_TYPES, grade_display_name
 from processor import process
 
 # ── Appearance ──────────────────────────────────────────────────────────────
@@ -74,7 +73,6 @@ class CubeDataChangerAIO:
 
         # State
         self._load_settings()
-        self.grade_vars = {}          # grade -> BooleanVar
         self.processing = False
 
         # Build UI
@@ -88,17 +86,14 @@ class CubeDataChangerAIO:
         self.output_path    = ctk.StringVar(value=s.get("output_path", ""))
         self.calendar_path  = ctk.StringVar(value=s.get("calendar_path", ""))
         self.mode_var       = ctk.StringVar(value=s.get("mode", "generate+date"))
-        self.saved_grades   = s.get("selected_grades", [])
         self.saved_grade_files = [f for f in s.get("grade_files", []) if os.path.exists(f)]
 
     def _save_settings(self):
-        selected = [g for g, v in self.grade_vars.items() if v.get()]
         app_settings.save({
             "office_path":     self.office_path.get(),
             "output_path":     self.output_path.get(),
             "calendar_path":   self.calendar_path.get(),
             "mode":            self.mode_var.get(),
-            "selected_grades": selected,
             "grade_files":     getattr(self, "legacy_grade_files", []),
         })
 
@@ -154,8 +149,8 @@ class CubeDataChangerAIO:
             row=r, column=0, padx=24, pady=(0, 8), sticky="w"); r += 1
 
         modes = [
-            ("generate+date", "⚡  Auto Generate + Date"),
-            ("generate",      "🔄  Auto Generate Only"),
+            ("generate+date", "⚡  Auto Detect + Generate + Date"),
+            ("generate",      "🔄  Auto Detect + Generate"),
             ("date_only",     "📅  Date Only"),
             ("grade_files+date", "📁  Files + Date (Legacy)"),
             ("grade_files",      "📁  Files Only (Legacy)"),
@@ -174,52 +169,6 @@ class CubeDataChangerAIO:
         # Divider
         ctk.CTkFrame(sb, height=1, fg_color=BORDER_COLOR).grid(
             row=r, column=0, sticky="ew", padx=20, pady=15); r += 1
-
-        # ── Grade selector (for auto-generate modes) ───────────────────────
-        self._grade_header_row = r
-        self._grade_label = ctk.CTkLabel(
-            sb, text="SELECT GRADES TO GENERATE",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=TEXT_SECONDARY, anchor="w")
-        self._grade_label.grid(row=r, column=0, padx=24, pady=(0, 8), sticky="w"); r += 1
-
-        # Quick select buttons
-        self._grade_btn_frame = ctk.CTkFrame(sb, fg_color="transparent")
-        self._grade_btn_frame.grid(row=r, column=0, padx=24, pady=(0, 6), sticky="ew"); r += 1
-
-        ctk.CTkButton(self._grade_btn_frame, text="All", width=55, height=26,
-                       font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                       command=lambda: self._toggle_all_grades(True)).pack(side="left", padx=(0, 4))
-        ctk.CTkButton(self._grade_btn_frame, text="None", width=55, height=26,
-                       font=ctk.CTkFont(size=11), fg_color="#3f3f46", hover_color="#52525b",
-                       command=lambda: self._toggle_all_grades(False)).pack(side="left", padx=(0, 4))
-        ctk.CTkButton(self._grade_btn_frame, text="Concrete", width=72, height=26,
-                       font=ctk.CTkFont(size=11), fg_color="#3f3f46", hover_color="#52525b",
-                       command=self._select_concrete_only).pack(side="left", padx=(0, 4))
-        ctk.CTkButton(self._grade_btn_frame, text="Mortar", width=60, height=26,
-                       font=ctk.CTkFont(size=11), fg_color="#3f3f46", hover_color="#52525b",
-                       command=self._select_mortar_only).pack(side="left")
-
-        # Scrollable checkbox area
-        self._grade_scroll = ctk.CTkScrollableFrame(
-            sb, height=170, fg_color=BG_CARD, corner_radius=8,
-            border_width=1, border_color=BORDER_COLOR,
-            scrollbar_button_color="#3f3f46", scrollbar_button_hover_color="#52525b")
-        self._grade_scroll.grid(row=r, column=0, padx=20, pady=(0, 10), sticky="ew"); r += 1
-
-        for g in ALL_TYPES:
-            var = ctk.BooleanVar(value=(g in self.saved_grades))
-            self.grade_vars[g] = var
-            cb = ctk.CTkCheckBox(
-                self._grade_scroll, text=grade_display_name(g),
-                variable=var, font=ctk.CTkFont(size=12),
-                text_color=TEXT_PRIMARY,
-                fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                border_color=TEXT_DIM, checkmark_color="white",
-            )
-            cb.pack(anchor="w", padx=8, pady=3)
-
-        self._grade_widgets_end_row = r
 
         # ── Legacy grade files area ─────────────────────────────────────────
         self.legacy_grade_files = list(self.saved_grade_files)
@@ -403,13 +352,8 @@ class CubeDataChangerAIO:
 
     def _on_mode_change(self):
         mode = self.mode_var.get()
-        is_generate = "generate" in mode
         is_legacy   = "grade_files" in mode
         is_date     = "date" in mode
-
-        # Grade checkboxes
-        for w in (self._grade_label, self._grade_btn_frame, self._grade_scroll):
-            w.grid() if is_generate else w.grid_remove()
 
         # Legacy file list
         for w in (self._legacy_label, self._legacy_listbox, self._legacy_btn_frame):
@@ -418,20 +362,6 @@ class CubeDataChangerAIO:
         # Calendar card
         if hasattr(self, "calendar_card"):
             self.calendar_card.grid() if is_date else self.calendar_card.grid_remove()
-
-    # ── Grade selection helpers ─────────────────────────────────────────────
-
-    def _toggle_all_grades(self, state):
-        for v in self.grade_vars.values():
-            v.set(state)
-
-    def _select_concrete_only(self):
-        for g, v in self.grade_vars.items():
-            v.set(g in CONCRETE_GRADES)
-
-    def _select_mortar_only(self):
-        for g, v in self.grade_vars.items():
-            v.set(g in MORTAR_TYPES)
 
     # ── Legacy grade file management ────────────────────────────────────────
 
@@ -479,13 +409,6 @@ class CubeDataChangerAIO:
             messagebox.showerror("Missing Input", "Please select an Output Folder.")
             return False
 
-        if "generate" in mode:
-            selected = [g for g, v in self.grade_vars.items() if v.get()]
-            if not selected:
-                messagebox.showerror("Missing Input",
-                                     "Please select at least one grade to generate.")
-                return False
-
         if "grade_files" in mode:
             if not self.legacy_grade_files:
                 messagebox.showerror("Missing Input",
@@ -514,8 +437,7 @@ class CubeDataChangerAIO:
         self._save_settings()
 
         mode = self.mode_var.get()
-        selected_grades = [g for g, v in self.grade_vars.items() if v.get()] \
-                          if "generate" in mode else None
+        selected_grades = None
         grade_files = self.legacy_grade_files if "grade_files" in mode else None
         calendar = self.calendar_path.get() if "date" in mode else None
 

@@ -9,7 +9,7 @@ import os
 import shutil
 import openpyxl
 
-from generator import generate_rows, grade_display_name, MORTAR_TYPES
+from generator import generate_rows, grade_display_name, MORTAR_TYPES, ALL_TYPES
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -47,6 +47,40 @@ def _find_sheets_for_grade(office_wb, grade_name, log):
         if b12 and _normalise_grade_name(str(b12)) == target:
             matches.append(sheet_name)
     return matches
+
+
+def _grade_from_template_cell(value):
+    """Resolve grade/type from template cell B12. Returns None if unsupported."""
+    if value is None:
+        return None
+
+    raw = str(value).strip().upper()
+    if not raw:
+        return None
+
+    normalized = raw.replace(" ", "").replace("_", "").replace("-", "")
+
+    # Concrete grades (M10-M45)
+    concrete = {g for g in ALL_TYPES if g.startswith("M")}
+    if normalized in concrete:
+        return normalized
+
+    # Mortar variants commonly seen in templates
+    mortar_14_tokens = {"1:4", "1/4", "14", "MORTAR1:4", "MORTAR1/4", "MORTAR14"}
+    mortar_16_tokens = {"1:6", "1/6", "16", "MORTAR1:6", "MORTAR1/6", "MORTAR16"}
+
+    if normalized in mortar_14_tokens:
+        return "1:4"
+    if normalized in mortar_16_tokens:
+        return "1:6"
+
+    # Additional fuzzy support
+    if "MORTAR" in normalized and ("1:4" in raw or "1/4" in raw or normalized.endswith("14")):
+        return "1:4"
+    if "MORTAR" in normalized and ("1:6" in raw or "1/6" in raw or normalized.endswith("16")):
+        return "1:6"
+
+    return None
 
 
 # ── Calendar logic ──────────────────────────────────────────────────────────
@@ -165,6 +199,47 @@ def apply_generated_grades(office_wb, selected_grades, num_rows, log, progress_c
     return total
 
 
+def apply_generated_grades_from_template(office_wb, log, progress_cb=None):
+    """
+    Auto mode: read each sheet B12, detect grade/type, generate one row,
+    and write directly into that sheet.
+    """
+    total = 0
+
+    supported_sheets = []
+    for sheet_name in office_wb.sheetnames:
+        ws = office_wb[sheet_name]
+        grade = _grade_from_template_cell(ws["B12"].value)
+        if grade:
+            supported_sheets.append((sheet_name, grade))
+
+    total_supported = len(supported_sheets)
+    log(f"  Supported sheets detected from B12: {total_supported}")
+
+    if total_supported == 0:
+        log("  ⚠ No supported grades/types found in template B12 cells")
+        return 0
+
+    for i, (sheet_name, grade) in enumerate(supported_sheets):
+        ws = office_wb[sheet_name]
+        weights, s7d, s28d = next(generate_rows(grade, 1))
+
+        for idx, value in enumerate(weights):
+            ws.cell(row=25, column=3 + idx, value=value)
+        for idx, value in enumerate(s7d):
+            ws.cell(row=27, column=3 + idx, value=value)
+        for idx, value in enumerate(s28d):
+            ws.cell(row=27, column=6 + idx, value=value)
+
+        total += 1
+        log(f"    ✓ {sheet_name} filled ({grade_display_name(grade)})")
+
+        if progress_cb:
+            progress_cb((i + 1) / total_supported * 0.8)
+
+    return total
+
+
 # ── Grade processing (from existing Excel files – legacy) ──────────────────
 
 def apply_grade_files(office_wb, grade_files, log, progress_cb=None):
@@ -260,9 +335,13 @@ def process(
             return 0
 
     # Grade generation (AIO)
-    if "generate" in mode and selected_grades:
+    if "generate" in mode:
         log("\n── GENERATING & APPLYING GRADE DATA ──")
-        total += apply_generated_grades(office_wb, selected_grades, num_rows, log, progress_cb)
+        if selected_grades:
+            total += apply_generated_grades(office_wb, selected_grades, num_rows, log, progress_cb)
+        else:
+            log("  Auto mode: detecting grade/type from each sheet B12")
+            total += apply_generated_grades_from_template(office_wb, log, progress_cb)
 
     # Grade files (legacy)
     if "grade_files" in mode and grade_files:
